@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hzxpz/ccc/util"
+	"github.com/hiwjd/quick/util"
 )
 
 var (

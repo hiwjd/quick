@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v7"
-	"github.com/hzxpz/ccc/util"
+	"github.com/hiwjd/quick/util"
 	"gorm.io/gorm"
 )
 

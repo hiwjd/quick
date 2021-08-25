@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hzxpz/ccc/support/log"
+	"github.com/hiwjd/quick"
 )
 
 var (
@@ -25,7 +25,7 @@ type (
 		timer         *time.Timer // 检测当前可用和待检测可用性的定时器
 		ac            AliveCheck  // 检查代理可用的方法
 		maxCheckTimes int         // 检测不可用这么多次后移除
-		logf          log.Logf
+		logf          quick.Logf
 		verbose       bool
 	}
 
@@ -34,7 +34,7 @@ type (
 	AliveCheck func(*url.URL) bool
 
 	Config struct {
-		Logf          log.Logf   // 日志方法
+		Logf          quick.Logf // 日志方法
 		AliveCheck    AliveCheck // 是检查代理存活的方法
 		Verbose       bool       // true:打印详细的日志
 		maxCheckTimes int        // 候选代理检测失败超过该次数后移除

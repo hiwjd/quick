@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hzxpz/ccc/support"
+	"github.com/hiwjd/quick/support"
 	"gorm.io/gorm"
 )
 
