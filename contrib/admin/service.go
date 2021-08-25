@@ -190,7 +190,7 @@ func (s *service) UpdateAdminPassword(ctx context.Context, cmd *UpdateAdminPassw
 	}
 
 	if !adm.CheckPassword(cmd.Origin) {
-		err = support.NewFineErr(http.StatusBadRequest, "原密码错误")
+		err = quick.NewFineErr(http.StatusBadRequest, "原密码错误")
 		return
 	}
 
@@ -216,7 +216,7 @@ func (s *service) BindMiniapp(ctx context.Context, code, openid, password string
 	}
 
 	if !admin.CheckPassword(password) {
-		err = support.NewFineErr(http.StatusBadRequest, "密码错误")
+		err = quick.NewFineErr(http.StatusBadRequest, "密码错误")
 		return
 	}
 
