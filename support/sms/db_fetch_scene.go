@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/hiwjd/quick/support"
+	"github.com/hiwjd/quick"
 	"gorm.io/gorm"
 )
 
@@ -44,7 +44,7 @@ func (s *dbFetchScene) Fetch(sceneID string) (*Scene, error) {
 	var sm SceneModel
 	if err := s.db.Where("scene_id=?", sceneID).First(&sm).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err = support.NewFineErr(http.StatusInternalServerError, "短信场景缺失")
+			err = quick.NewFineErr(http.StatusInternalServerError, "短信场景缺失")
 		}
 		return nil, err
 	}
