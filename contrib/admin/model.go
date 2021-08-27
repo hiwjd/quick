@@ -63,7 +63,7 @@ type Role struct {
 }
 
 // Roles 角色组 用来使多角色的一些判断更方便点
-type Roles []*Role
+type Roles []Role
 
 // ContainsKey 查看角色是否包含某个key
 func (rs Roles) ContainsKey(key string) bool {
@@ -228,7 +228,7 @@ type MenuNode struct {
 	Type     string      `json:"type"`
 	URL      string      `json:"url"`
 	Children []*MenuNode `json:"children"`
-	Actions  []Action    `json:"actions"`
+	Actions  []*Action   `json:"actions"`
 }
 
 func (mn MenuNode) isAction() bool {
@@ -243,16 +243,16 @@ func (mn MenuNode) asAction() Action {
 }
 
 // MenuList 是菜单列表
-type MenuList []*Menu
+type MenuList []Menu
 
 // AsNode 把菜单列表转成菜单树
-func (ml MenuList) AsNode() *MenuNode {
+func (ml MenuList) AsNode() MenuNode {
 	sort.Sort(ml)
 
 	mapping := make(map[uint]*MenuNode)
 	noParent := make(map[uint][]*MenuNode)
 
-	root := new(MenuNode)
+	root := MenuNode{}
 	for _, m := range ml {
 		mn := &MenuNode{
 			ID:       m.ID,
@@ -261,12 +261,13 @@ func (ml MenuList) AsNode() *MenuNode {
 			Type:     m.Type,
 			URL:      m.URL,
 			Children: make([]*MenuNode, 0),
-			Actions:  make([]Action, 0),
+			Actions:  make([]*Action, 0),
 		}
 		if p, ok := noParent[m.ID]; ok {
 			for _, pn := range p {
 				if pn.isAction() {
-					mn.Actions = append(mn.Actions, pn.asAction())
+					action := pn.asAction()
+					mn.Actions = append(mn.Actions, &action)
 				} else {
 					mn.Children = append(mn.Children, pn)
 				}
@@ -280,7 +281,8 @@ func (ml MenuList) AsNode() *MenuNode {
 		} else {
 			if parent, ok := mapping[m.ParentID]; ok {
 				if mn.isAction() {
-					parent.Actions = append(parent.Actions, mn.asAction())
+					action := mn.asAction()
+					parent.Actions = append(parent.Actions, &action)
 				} else {
 					parent.Children = append(parent.Children, mn)
 				}

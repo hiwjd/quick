@@ -10,15 +10,15 @@ type UpdateAdminCmd struct {
 	RoleIDList []uint `json:"roleIdList"`
 }
 
-func (cmd *UpdateAdminCmd) toModel() (*Admin, []*AdminRole, error) {
-	arList := make([]*AdminRole, len(cmd.RoleIDList))
+func (cmd *UpdateAdminCmd) toModel() (Admin, []AdminRole, error) {
+	arList := make([]AdminRole, len(cmd.RoleIDList))
 	for i, roleID := range cmd.RoleIDList {
-		arList[i] = &AdminRole{
+		arList[i] = AdminRole{
 			RoleID: roleID,
 		}
 	}
 
-	model := &Admin{
+	model := Admin{
 		ID:      cmd.ID,
 		Account: cmd.Account,
 		Name:    cmd.Name,

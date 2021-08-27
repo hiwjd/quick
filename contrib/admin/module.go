@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -29,15 +28,11 @@ func AdminModule(ac quick.AppContext) {
 		adminService:        adminService,
 		adminSessionStorage: adminSessionStorage,
 	}
-	ac.POST("/pub/admin/login", ct.adminLogin)                     // 后台 - 登录
-	ac.POST("/ana/admin/logout", ct.adminLogout)                   // 后台 - 登出
-	ac.POST("/ana/admin/update-my-pass", ct.adminUpdateMyPassword) // 后台 - 修改自己的密码
-	ac.GET("/ana/admin/menu", ct.queryAdminMenu)                   // 后台 - 当前登录管理员的菜单
-	ac.GET("/ana/admin/query-admin-page", func(c echo.Context) error {
-		xx := c.QueryParam("xx")
-		ac.Publish("admin-query", xx)
-		return ct.queryAdminPage(c)
-	}) // 后台 - 管理员分页列表
+	ac.POST("/pub/admin/login", ct.adminLogin)                        // 后台 - 登录
+	ac.POST("/ana/admin/logout", ct.adminLogout)                      // 后台 - 登出
+	ac.POST("/ana/admin/update-my-pass", ct.adminUpdateMyPassword)    // 后台 - 修改自己的密码
+	ac.GET("/ana/admin/menu", ct.queryAdminMenu)                      // 后台 - 当前登录管理员的菜单
+	ac.GET("/ana/admin/query-admin-page", ct.queryAdminPage)          // 后台 - 管理员分页列表
 	ac.GET("/ana/admin/get-by-id", ct.getAdminByID)                   // 后台 - 根据ID查询管理员
 	ac.GET("/ana/admin/get-by-account", ct.getAdminByAccount)         // 后台 - 根据帐号查询管理员
 	ac.POST("/ana/admin/create", ct.createAdmin)                      // 后台 - 创建管理员
@@ -48,19 +43,6 @@ func AdminModule(ac quick.AppContext) {
 	// ac.GET("/ana/admin/get-qiniu-upload-token", ct.getQiniuUploadToken) // 后台 - 获取上传七牛云的token
 	// ac.POST("/ana/admin/upload", ct.upload)                             // 后台 - 上传图片
 	// ac.Static("/pub/fread", conf.UploadDir)
-	ac.Subscribe("admin-query", func(s string) {
-		fmt.Printf(">>> admin-query-s1: %s\n", s)
-	})
-	ac.Subscribe("admin-query", func(s string) {
-		time.Sleep(time.Second * 2)
-		fmt.Printf(">>> admin-query-s2: %s\n", s)
-		if n, er := strconv.Atoi(s); er != nil {
-			ac.Logf("er: %s\n", er.Error())
-		} else {
-			n2 := 1 / n
-			ac.Logf("n2: %d\n", n2)
-		}
-	})
 }
 
 // AdminLoginReq 是管理员登录请求
@@ -77,15 +59,15 @@ type ctrl struct {
 
 func (ct *ctrl) adminLogin(c echo.Context) (err error) {
 	ctx := c.Request().Context()
-	req := new(AdminLoginReq)
-	if err = c.Bind(req); err != nil {
+	var req AdminLoginReq
+	if err = c.Bind(&req); err != nil {
 		return
 	}
-	if err = c.Validate(req); err != nil {
+	if err = c.Validate(&req); err != nil {
 		return
 	}
 
-	var admin *Admin
+	var admin Admin
 	if admin, err = ct.adminService.GetAdminByAccount(ctx, req.Account); err != nil {
 		err = echo.NewHTTPError(http.StatusBadRequest, "帐号或密码错误").SetInternal(err)
 		return
@@ -101,14 +83,14 @@ func (ct *ctrl) adminLogin(c echo.Context) (err error) {
 		ttl = 0
 	}
 
-	session := &Session{
+	session := Session{
 		ID:       admin.ID,
 		Name:     admin.Name,
 		Mobile:   admin.Mobile,
 		Remember: req.Remember,
 	}
 
-	token, err := ct.adminSessionStorage.Set(session, ttl)
+	token, err := ct.adminSessionStorage.Set(&session, ttl)
 	if err != nil {
 		err = echo.NewHTTPError(http.StatusInternalServerError).SetInternal(err)
 		return
@@ -121,7 +103,7 @@ func (ct *ctrl) queryAdminMenu(c echo.Context) (err error) {
 	ctx := c.Request().Context()
 	session := c.Get(AdminSessionID).(Session)
 
-	var menuList []*Menu
+	var menuList []Menu
 	if menuList, err = ct.adminService.QueryMenuListByAdminID(ctx, session.ID); err != nil {
 		return
 	}
@@ -137,11 +119,11 @@ func (ct *ctrl) adminLogout(c echo.Context) error {
 
 func (ct *ctrl) queryAdminPage(c echo.Context) (err error) {
 	ctx := c.Request().Context()
-	cmd := &QueryAdminPageCmd{
+	cmd := QueryAdminPageCmd{
 		Page: 1,
 		Size: 20,
 	}
-	if err = c.Bind(cmd); err != nil {
+	if err = c.Bind(&cmd); err != nil {
 		return
 	}
 
@@ -178,15 +160,15 @@ func (ct *ctrl) getAdminByAccount(c echo.Context) (err error) {
 
 func (ct *ctrl) createAdmin(c echo.Context) (err error) {
 	ctx := c.Request().Context()
-	cmd := new(CreateAdminCmd)
-	if err = c.Bind(cmd); err != nil {
+	var cmd CreateAdminCmd
+	if err = c.Bind(&cmd); err != nil {
 		return
 	}
-	if err = c.Validate(cmd); err != nil {
+	if err = c.Validate(&cmd); err != nil {
 		return
 	}
 
-	var admin *Admin
+	var admin Admin
 	if admin, err = ct.adminService.CreateAdmin(ctx, cmd); err != nil {
 		return
 	}
@@ -196,8 +178,8 @@ func (ct *ctrl) createAdmin(c echo.Context) (err error) {
 
 func (ct *ctrl) updateAdmin(c echo.Context) (err error) {
 	ctx := c.Request().Context()
-	cmd := new(UpdateAdminCmd)
-	if err = c.Bind(cmd); err != nil {
+	var cmd UpdateAdminCmd
+	if err = c.Bind(&cmd); err != nil {
 		return
 	}
 
@@ -210,12 +192,12 @@ func (ct *ctrl) updateAdmin(c echo.Context) (err error) {
 
 func (ct *ctrl) queryRoleList(c echo.Context) (err error) {
 	ctx := c.Request().Context()
-	cmd := new(QueryRoleListCmd)
-	if err = c.Bind(cmd); err != nil {
+	var cmd QueryRoleListCmd
+	if err = c.Bind(&cmd); err != nil {
 		return
 	}
 
-	var roleList []*Role
+	var roleList []Role
 	if roleList, err = ct.adminService.QueryRoleList(ctx, cmd); err != nil {
 		return
 	}
@@ -238,11 +220,11 @@ func (ct *ctrl) queryAdminRoleList(c echo.Context) (err error) {
 
 func (ct *ctrl) updateAdminPassword(c echo.Context) (err error) {
 	ctx := c.Request().Context()
-	cmd := new(UpdateAdminPasswordCmd)
-	if err = c.Bind(cmd); err != nil {
+	var cmd UpdateAdminPasswordCmd
+	if err = c.Bind(&cmd); err != nil {
 		return
 	}
-	if err = c.Validate(cmd); err != nil {
+	if err = c.Validate(&cmd); err != nil {
 		return
 	}
 
@@ -270,8 +252,8 @@ func (ct *ctrl) adminUpdateMyPassword(c echo.Context) (err error) {
 	ctx := c.Request().Context()
 	session := c.Get(AdminSessionID).(Session)
 
-	cmd := new(UpdateAdminPasswordCmd)
-	if err = c.Bind(cmd); err != nil {
+	var cmd UpdateAdminPasswordCmd
+	if err = c.Bind(&cmd); err != nil {
 		return
 	}
 	cmd.ID = session.ID

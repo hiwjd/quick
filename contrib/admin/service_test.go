@@ -10,7 +10,7 @@ import (
 )
 
 func TestAdmin(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file::memory:"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	assert.Nil(t, err)
 
 	db.AutoMigrate(Admin{}, Role{}, AdminRole{}, Menu{}, API{})
@@ -18,7 +18,7 @@ func TestAdmin(t *testing.T) {
 	service := NewService(db)
 	ctx := context.Background()
 
-	cmd := &CreateAdminCmd{
+	cmd := CreateAdminCmd{
 		Account:    "admin",
 		Password:   "123123",
 		Name:       "管理员",

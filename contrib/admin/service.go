@@ -11,22 +11,22 @@ import (
 
 // Service 是管理员服务
 type Service interface {
-	QueryAdminPage(context.Context, *QueryAdminPageCmd) ([]*Admin, *support.Page, error)                                 // 查询管理员分页列表
-	GetAdminByID(context.Context, uint) (*Admin, error)                                                                  // 根据ID查找管理员
-	GetAdminByAccount(context.Context, string) (*Admin, error)                                                           // 根据帐号查找管理员
-	GetAdminByWxopenid(context.Context, string) (*Admin, error)                                                          // 根据微信openid查找管理员
-	CreateAdmin(context.Context, *CreateAdminCmd) (*Admin, error)                                                        // 创建管理员
-	UpdateAdmin(context.Context, *UpdateAdminCmd) error                                                                  // 修改管理员
-	UpdateAdminPassword(context.Context, *UpdateAdminPasswordCmd) error                                                  // 修改管理员密码
-	QueryRoleListByAdminID(context.Context, uint) (Roles, error)                                                         // 查询管理员的角色列表
-	QueryRoleIDListByAdminID(context.Context, uint) ([]uint, error)                                                      // 查询管理员的角色ID列表
-	QueryMenuListByAdminID(context.Context, uint) ([]*Menu, error)                                                       // 查询管理员拥有的菜单列表
-	QueryRoleList(context.Context, *QueryRoleListCmd) ([]*Role, error)                                                   // 查询所有角色列表
-	GetAdminByCode(ctx context.Context, code string) (data *Admin, err error)                                            // 根据code查找管理员
-	BindMiniapp(ctx context.Context, code, openid, password string) (err error)                                          // 管理员绑定小程序
-	QueryAdminPageByRole(ctx context.Context, cmd *QueryAdminPageByRoleCmd) (data []*Admin, pg *support.Page, err error) // 根据角色查询管理员
-	CanAccessAPI(ctx context.Context, adminID uint, method, path string) bool                                            // 返回能否访问某个接口
-	GetPermData(ctx context.Context, adminID uint) []DataPerm                                                            // 返回管理员的数据权限
+	QueryAdminPage(context.Context, QueryAdminPageCmd) ([]Admin, support.Page, error)                                 // 查询管理员分页列表
+	GetAdminByID(context.Context, uint) (Admin, error)                                                                // 根据ID查找管理员
+	GetAdminByAccount(context.Context, string) (Admin, error)                                                         // 根据帐号查找管理员
+	GetAdminByWxopenid(context.Context, string) (Admin, error)                                                        // 根据微信openid查找管理员
+	CreateAdmin(context.Context, CreateAdminCmd) (Admin, error)                                                       // 创建管理员
+	UpdateAdmin(context.Context, UpdateAdminCmd) error                                                                // 修改管理员
+	UpdateAdminPassword(context.Context, UpdateAdminPasswordCmd) error                                                // 修改管理员密码
+	QueryRoleListByAdminID(context.Context, uint) (Roles, error)                                                      // 查询管理员的角色列表
+	QueryRoleIDListByAdminID(context.Context, uint) ([]uint, error)                                                   // 查询管理员的角色ID列表
+	QueryMenuListByAdminID(context.Context, uint) ([]Menu, error)                                                     // 查询管理员拥有的菜单列表
+	QueryRoleList(context.Context, QueryRoleListCmd) ([]Role, error)                                                  // 查询所有角色列表
+	GetAdminByCode(ctx context.Context, code string) (data Admin, err error)                                          // 根据code查找管理员
+	BindMiniapp(ctx context.Context, code, openid, password string) (err error)                                       // 管理员绑定小程序
+	QueryAdminPageByRole(ctx context.Context, cmd QueryAdminPageByRoleCmd) (data []Admin, pg support.Page, err error) // 根据角色查询管理员
+	CanAccessAPI(ctx context.Context, adminID uint, method, path string) bool                                         // 返回能否访问某个接口
+	GetPermData(ctx context.Context, adminID uint) []DataPerm                                                         // 返回管理员的数据权限
 }
 
 // NewService 构造管理员服务
@@ -40,32 +40,31 @@ type service struct {
 	db *gorm.DB
 }
 
-func (s *service) QueryAdminPage(ctx context.Context, cmd *QueryAdminPageCmd) (data []*Admin, pg *support.Page, err error) {
+func (s *service) QueryAdminPage(ctx context.Context, cmd QueryAdminPageCmd) (data []Admin, pg support.Page, err error) {
 	db := s.db.WithContext(ctx)
 
-	pg = &support.Page{}
+	pg = support.Page{}
 	pg.Page = cmd.Page
 	pg.Size = cmd.Size
-	db = cmd.applyCondition(db.Model(&Admin{}))
+	db = cmd.applyCondition(db.Model(Admin{}))
 	err = db.Count(&pg.Count).Limit(cmd.Size).Offset(cmd.offset()).Find(&data).Error
 
 	return
 }
 
-func (s *service) GetAdminByAccount(ctx context.Context, account string) (*Admin, error) {
+func (s *service) GetAdminByAccount(ctx context.Context, account string) (Admin, error) {
 	var admin Admin
 	err := s.db.Where("account = ?", account).First(&admin).Error
-	return &admin, err
+	return admin, err
 }
 
-func (s *service) GetAdminByID(ctx context.Context, id uint) (admin *Admin, err error) {
-	admin = new(Admin)
-	err = s.db.Where("id=?", id).First(admin).Error
+func (s *service) GetAdminByID(ctx context.Context, id uint) (admin Admin, err error) {
+	err = s.db.Where("id=?", id).First(&admin).Error
 	return
 }
 
-func (s *service) GetAdminByWxopenid(ctx context.Context, openid string) (admin *Admin, err error) {
-	wxadmin := new(WxAdmin)
+func (s *service) GetAdminByWxopenid(ctx context.Context, openid string) (admin Admin, err error) {
+	var wxadmin WxAdmin
 	if err = s.db.Where("openid = ?", openid).Take(&wxadmin).Error; err != nil {
 		return
 	}
@@ -73,20 +72,20 @@ func (s *service) GetAdminByWxopenid(ctx context.Context, openid string) (admin 
 	return s.GetAdminByID(ctx, wxadmin.AdminID)
 }
 
-func (s *service) CreateAdmin(ctx context.Context, cmd *CreateAdminCmd) (admin *Admin, err error) {
-	var arList []*AdminRole
+func (s *service) CreateAdmin(ctx context.Context, cmd CreateAdminCmd) (admin Admin, err error) {
+	var arList []AdminRole
 	if admin, arList, err = cmd.toModel(); err != nil {
 		return
 	}
 
 	err = s.db.Transaction(func(tx *gorm.DB) (err error) {
-		if err = tx.Create(admin).Error; err != nil {
+		if err = tx.Create(&admin).Error; err != nil {
 			return
 		}
 
 		for _, ar := range arList {
 			ar.AdminID = admin.ID
-			if err = tx.Create(ar).Error; err != nil {
+			if err = tx.Create(&ar).Error; err != nil {
 				return
 			}
 		}
@@ -97,9 +96,9 @@ func (s *service) CreateAdmin(ctx context.Context, cmd *CreateAdminCmd) (admin *
 	return
 }
 
-func (s *service) UpdateAdmin(ctx context.Context, cmd *UpdateAdminCmd) (err error) {
-	var admin *Admin
-	var arList []*AdminRole
+func (s *service) UpdateAdmin(ctx context.Context, cmd UpdateAdminCmd) (err error) {
+	var admin Admin
+	var arList []AdminRole
 	if admin, arList, err = cmd.toModel(); err != nil {
 		return
 	}
@@ -124,7 +123,7 @@ func (s *service) UpdateAdmin(ctx context.Context, cmd *UpdateAdminCmd) (err err
 }
 
 func (s *service) QueryRoleListByAdminID(ctx context.Context, adminID uint) (data Roles, err error) {
-	var arList []*AdminRole
+	var arList []AdminRole
 	if err = s.db.Where("admin_id = ?", adminID).Find(&arList).Error; err != nil {
 		return
 	}
@@ -139,7 +138,7 @@ func (s *service) QueryRoleListByAdminID(ctx context.Context, adminID uint) (dat
 }
 
 func (s *service) QueryRoleIDListByAdminID(ctx context.Context, adminID uint) (roleIDList []uint, err error) {
-	var arList []*AdminRole
+	var arList []AdminRole
 	if err = s.db.Where("admin_id = ?", adminID).Find(&arList).Error; err != nil {
 		return
 	}
@@ -152,13 +151,13 @@ func (s *service) QueryRoleIDListByAdminID(ctx context.Context, adminID uint) (r
 	return
 }
 
-func (s *service) QueryMenuListByAdminID(ctx context.Context, adminID uint) (menuList []*Menu, err error) {
+func (s *service) QueryMenuListByAdminID(ctx context.Context, adminID uint) (menuList []Menu, err error) {
 	var roleIDList []uint
 	if roleIDList, err = s.QueryRoleIDListByAdminID(ctx, adminID); err != nil {
 		return
 	}
 
-	var rmList []*RoleMenu
+	var rmList []RoleMenu
 	if err = s.db.Where("role_id in (?)", roleIDList).Find(&rmList).Error; err != nil {
 		return
 	}
@@ -172,15 +171,15 @@ func (s *service) QueryMenuListByAdminID(ctx context.Context, adminID uint) (men
 	return
 }
 
-func (s *service) QueryRoleList(ctx context.Context, cmd *QueryRoleListCmd) (roleList []*Role, err error) {
-	db := cmd.applyCondition(s.db.Model(&Role{}))
+func (s *service) QueryRoleList(ctx context.Context, cmd QueryRoleListCmd) (roleList []Role, err error) {
+	db := cmd.applyCondition(s.db.Model(Role{}))
 
 	err = db.Find(&roleList).Error
 	return
 }
 
-func (s *service) UpdateAdminPassword(ctx context.Context, cmd *UpdateAdminPasswordCmd) (err error) {
-	if err = quick.Check(cmd); err != nil {
+func (s *service) UpdateAdminPassword(ctx context.Context, cmd UpdateAdminPasswordCmd) (err error) {
+	if err = quick.Check(&cmd); err != nil {
 		return
 	}
 
@@ -203,9 +202,8 @@ func (s *service) UpdateAdminPassword(ctx context.Context, cmd *UpdateAdminPassw
 	return
 }
 
-func (s *service) GetAdminByCode(ctx context.Context, code string) (data *Admin, err error) {
-	data = new(Admin)
-	err = s.db.Where("code = ?", code).Take(data).Error
+func (s *service) GetAdminByCode(ctx context.Context, code string) (data Admin, err error) {
+	err = s.db.Where("code = ?", code).Take(&data).Error
 	return
 }
 
@@ -240,8 +238,8 @@ func (s *service) BindMiniapp(ctx context.Context, code, openid, password string
 	return
 }
 
-func (s *service) QueryAdminPageByRole(ctx context.Context, cmd *QueryAdminPageByRoleCmd) (data []*Admin, pg *support.Page, err error) {
-	pg = &support.Page{}
+func (s *service) QueryAdminPageByRole(ctx context.Context, cmd QueryAdminPageByRoleCmd) (data []Admin, pg support.Page, err error) {
+	pg = support.Page{}
 	pg.Page = cmd.Page
 	pg.Size = cmd.Size
 	db := s.db.Table("admin").Select("admin.*").Joins("left join admin_role on admin.id = admin_role.admin_id")
