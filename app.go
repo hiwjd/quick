@@ -23,48 +23,22 @@ import (
 )
 
 type (
-	// Module 是模块。。
-	// 作用是把繁琐的项目启动过程分离成独立的部分
+	// Module 是模块
+	// 设定这个接口的作用是把繁杂的系统组成分离成独立的部分
+	// 对具体什么是模块并没有任何约束，可以：
+	//   提供HTTP服务
+	//   执行定时任务
+	//   独立存在的一段for循环
+	//   仅仅打印一段话
+	//   等等
+	// 只要最终包装成Module接口传入RegisterModules方法即可
+	// 可以查看samples中的项目找找感觉
 	Module interface {
 		Init(ac AppContext)
 	}
 
 	// ModuleFunc 方便把方法转换成Module
 	ModuleFunc func(ac AppContext)
-
-	// OnShutdown 在App停止前执行的方法
-	OnShutdown func()
-
-	// Job 是定时任务
-	Job func(context.Context) error
-
-	// AppContext 是模块初始化时可获取的资源和可调用的方法
-	AppContext interface {
-		// 注册GET路由
-		GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc)
-		// 注册POST路由
-		POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc)
-		// 注册中间件
-		Use(middlewares ...echo.MiddlewareFunc)
-		// 注册定时任务
-		Schedule(expr string, job Job)
-		// 发布事件
-		Publish(topic string, payload string)
-		// 订阅事件
-		Subscribe(topic string, cb func(string))
-		// 获取数据库连接
-		GetDB() *gorm.DB
-		// 获取redis连接
-		GetRedis() *redis.Client
-		// 日志方法
-		Logf(format string, args ...interface{})
-		// 注册资源，比如某些业务服务
-		Provide(id string, obj interface{})
-		// 获取资源
-		Take(id string) interface{}
-		// 注册关闭钩子，在http服务和定时任务服务停止后触发
-		RegisterShutdown(hook OnShutdown)
-	}
 )
 
 // Init 实现Module
@@ -86,7 +60,8 @@ type App struct {
 	pubsub        PubSub
 }
 
-func NewApp(config Config) *App {
+// New 构造App
+func New(config Config) *App {
 	logWriter := initLoggerWriter(config.Log)
 	logTimeFormt := "2006/01/02 15:04:05.00000"
 	logger := log.New(logWriter, "", log.Ldate|log.Ltime|log.Lmicroseconds|log.Lshortfile)
@@ -130,14 +105,23 @@ func NewApp(config Config) *App {
 	return a
 }
 
+// GET 注册HTTP GET路由
 func (a *App) GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) {
 	a.e.GET(path, h, m...)
 }
 
+// POST 注册HTTP POST路由
 func (a *App) POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) {
 	a.e.POST(path, h, m...)
 }
 
+// Use 注册HTTP中间件
+// 详细说明参考echo的文档 https://echo.labstack.com/middleware/#root-level-after-router
+func (a *App) Use(middlewares ...echo.MiddlewareFunc) {
+	a.e.Use(middlewares...)
+}
+
+// Schedule 注册定时任务
 func (a *App) Schedule(expr string, job Job) {
 	fn := func() {
 		ctx := context.Background()
@@ -155,53 +139,57 @@ func (a *App) Schedule(expr string, job Job) {
 	}
 }
 
-// 发布事件
+// Publish 发布事件
 func (a *App) Publish(topic string, payload string) {
 	a.pubsub.Publish(topic, payload)
 }
 
-// 订阅事件
+// Subscribe 订阅事件
 func (a *App) Subscribe(topic string, cb func(string)) {
 	a.pubsub.Subscribe(topic, cb)
 }
 
+// GetDB 获取数据库连接实例
 func (a *App) GetDB() *gorm.DB {
 	return a.db
 }
 
+// GetRedis 获取Redis连接实例
 func (a *App) GetRedis() *redis.Client {
 	return a.redisClient
 }
 
+// RegisterModules 注册模块，详情见Module
 func (a *App) RegisterModules(modules ...Module) {
-	a.modules = modules
 	for _, module := range modules {
 		module.Init(a)
 	}
+	a.modules = append(a.modules, modules...)
 }
 
-func (a *App) Use(middlewares ...echo.MiddlewareFunc) {
-	a.e.Use(middlewares...)
-}
-
+// Provide 提供资源，和Take配套使用
 func (a *App) Provide(id string, obj interface{}) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.resource[id] = obj
 }
 
+// Take 从AppContext中获取资源，即通过Provide提供的资源
 func (a *App) Take(id string) interface{} {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.resource[id]
 }
 
+// RegisterShutdown 注册停止服务前调用的方法
+// 当服务停止时，会先停止HTTP服务、定时任务、事件系统，当这3者停止后，
+// 调用通过ReigsterShutdown注册的方法
 func (a *App) RegisterShutdown(hook OnShutdown) {
 	a.shutdownHooks = append(a.shutdownHooks, hook)
 }
 
-// Start 启动HTTP和定时任务服务
-// 通过返回的方法停止App
+// Start 启动服务，并返回停止服务的方法
+// 内部会根据配置启动HTTP服务、定时任务服务
 func (a *App) Start() func() {
 	a.c.Start()
 	go func() {
@@ -257,6 +245,15 @@ func (a *App) Start() func() {
 
 func (a *App) Logf(format string, args ...interface{}) {
 	a.logger.Output(3, fmt.Sprintf(format, args...))
+}
+
+// Provide 和AppContext.Provide拥有相同的功能，即注册资源到AppContext中
+// 该方法返回Module，因此可以做为创建模块的快捷方式
+// 比如这样使用: app.RegisterModules(quick.Provide("id-res1", obj))
+func Provide(id string, obj interface{}) Module {
+	return ModuleFunc(func(ac AppContext) {
+		ac.Provide(id, obj)
+	})
 }
 
 func initDB(dsn string, writer logger.Writer) *gorm.DB {

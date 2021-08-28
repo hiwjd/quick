@@ -32,7 +32,7 @@ var defaultsErrorMsgMap = map[string]string{
 }
 
 // dftChecker 是默认的Checker
-var dftChecker = New("validate", "title", nil)
+var dftChecker = NewChecker("validate", "title", nil)
 
 // Check 调用默认实现的Check
 func Check(v interface{}) error {
@@ -40,7 +40,7 @@ func Check(v interface{}) error {
 }
 
 // New 返回Checker实例
-func New(ruleTagName, titleTagName string, errorMsgMap map[string]string) Checker {
+func NewChecker(ruleTagName, titleTagName string, errorMsgMap map[string]string) Checker {
 	emm := defaultsErrorMsgMap
 	if errorMsgMap != nil {
 		for k, v := range errorMsgMap {

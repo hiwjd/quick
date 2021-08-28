@@ -22,12 +22,19 @@ type Session struct {
 }
 
 func AdminModule(ac quick.AppContext) {
-	adminService := ac.Take("admin").(Service)
-	adminSessionStorage := ac.Take("adminSessionStorage").(session.Storage)
+	adminService := NewService(ac.GetDB())
+	ac.Provide("adminService", adminService)
+
+	adminSessionStorage, ok := ac.Take("adminSessionStorage").(session.Storage)
+	if !ok {
+		panic("Missing Dependency session.Storage#adminSessionStorage")
+	}
+
 	ct := &ctrl{
 		adminService:        adminService,
 		adminSessionStorage: adminSessionStorage,
 	}
+	ac.Use(AdminSessionCheck(adminSessionStorage, adminService.CanAccessAPI, ac.Logf))
 	ac.POST("/pub/admin/login", ct.adminLogin)                        // 后台 - 登录
 	ac.POST("/ana/admin/logout", ct.adminLogout)                      // 后台 - 登出
 	ac.POST("/ana/admin/update-my-pass", ct.adminUpdateMyPassword)    // 后台 - 修改自己的密码
@@ -40,9 +47,6 @@ func AdminModule(ac quick.AppContext) {
 	ac.POST("/ana/admin/update-password", ct.updateAdminPassword)     // 后台 - 更新管理员密码
 	ac.GET("/ana/admin/query-role-list", ct.queryRoleList)            // 后台 - 角色列表
 	ac.GET("/ana/admin/query-admin-role-list", ct.queryAdminRoleList) // 后台 - 管理员的角色列表
-	// ac.GET("/ana/admin/get-qiniu-upload-token", ct.getQiniuUploadToken) // 后台 - 获取上传七牛云的token
-	// ac.POST("/ana/admin/upload", ct.upload)                             // 后台 - 上传图片
-	// ac.Static("/pub/fread", conf.UploadDir)
 }
 
 // AdminLoginReq 是管理员登录请求
