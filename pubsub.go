@@ -56,11 +56,7 @@ func (ps *memPubSub) Subscribe(topic string, cb func(string)) {
 	defer ps.mu.Unlock()
 
 	c := make(chan string, 8)
-	if _, ok := ps.subscribers[topic]; ok {
-		ps.subscribers[topic] = append(ps.subscribers[topic], c)
-	} else {
-		ps.subscribers[topic] = []chan string{c}
-	}
+	ps.subscribers[topic] = append(ps.subscribers[topic], c)
 
 	ps.done.Add(1)
 	go func(_cb func(string)) {
