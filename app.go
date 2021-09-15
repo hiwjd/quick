@@ -1,14 +1,10 @@
 package quick
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
-	"sync"
-	"time"
 
 	"github.com/go-redis/redis/v7"
 	"github.com/google/uuid"
@@ -34,30 +30,24 @@ type (
 	// 只要最终包装成Module接口传入RegisterModules方法即可
 	// 可以查看samples中的项目找找感觉
 	Module interface {
-		Init(ac AppContext)
+		Init(ac Context)
 	}
 
 	// ModuleFunc 方便把方法转换成Module
-	ModuleFunc func(ac AppContext)
+	ModuleFunc func(ac Context)
+
+	// Migrator 迁移表
+	Migrator func(db *gorm.DB) error
 )
 
 // Init 实现Module
-func (mf ModuleFunc) Init(ac AppContext) {
+func (mf ModuleFunc) Init(ac Context) {
 	mf(ac)
 }
 
 type App struct {
-	mu            sync.RWMutex
-	config        Config
-	logger        *log.Logger
-	c             *cron.Cron
-	e             *echo.Echo
-	db            *gorm.DB
-	redisClient   *redis.Client
-	resource      map[string]interface{}
-	modules       []Module
-	shutdownHooks []OnShutdown
-	pubsub        PubSub
+	ac     *quickContext
+	logger *log.Logger
 }
 
 // New 构造App
@@ -92,166 +82,50 @@ func New(config Config) *App {
 	cronParserOption := cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor
 	c := cron.New(cron.WithLogger(cron.PrintfLogger(logger)), cron.WithParser(cron.NewParser(cronParserOption)))
 
-	a := &App{}
-	a.config = config
-	a.logger = logger
-	a.c = c
-	a.db = initDB(config.MysqlDSN, logger)
-	a.redisClient = initRedis(config.Redis)
-	a.e = e
-	a.resource = make(map[string]interface{})
-	a.pubsub = newMemPubSub(a.Logf)
+	ac := &quickContext{}
+	ac.config = config
+	ac.logger = logger
+	ac.c = c
+	ac.db = initDB(config.MysqlDSN, logger)
+	ac.redisClient = initRedis(config.Redis)
+	ac.e = e
+	ac.resource = make(map[string]interface{})
+	ac.pubsub = newMemPubSub(ac.Logf)
 
-	return a
-}
-
-// GET 注册HTTP GET路由
-func (a *App) GET(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) {
-	a.e.GET(path, h, m...)
-}
-
-// POST 注册HTTP POST路由
-func (a *App) POST(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) {
-	a.e.POST(path, h, m...)
-}
-
-// Use 注册HTTP中间件
-// 详细说明参考echo的文档 https://echo.labstack.com/middleware/#root-level-after-router
-func (a *App) Use(middlewares ...echo.MiddlewareFunc) {
-	a.e.Use(middlewares...)
-}
-
-// Schedule 注册定时任务
-func (a *App) Schedule(expr string, job Job) {
-	fn := func() {
-		ctx := context.Background()
-		if err := job(ctx); err != nil {
-			a.Logf("[ERROR] Cron Job Execute Failed: %s", err.Error())
-		}
+	return &App{
+		ac:     ac,
+		logger: logger,
 	}
-	job0 := cron.NewChain(cron.DelayIfStillRunning(cron.PrintfLogger(a.logger))).Then((cron.FuncJob(fn)))
-
-	entryID, err := a.c.AddJob(expr, job0)
-	if err != nil {
-		a.Logf("[ERROR] Cron Job Add Failed: %s, expr: %s", err.Error(), expr)
-	} else {
-		a.Logf("[INFO] Cron Job Add Success: %d", entryID)
-	}
-}
-
-// Publish 发布事件
-func (a *App) Publish(topic string, payload string) {
-	a.pubsub.Publish(topic, payload)
-}
-
-// Subscribe 订阅事件
-func (a *App) Subscribe(topic string, cb func(string)) {
-	a.pubsub.Subscribe(topic, cb)
-}
-
-// GetDB 获取数据库连接实例
-func (a *App) GetDB() *gorm.DB {
-	return a.db
-}
-
-// GetRedis 获取Redis连接实例
-func (a *App) GetRedis() *redis.Client {
-	return a.redisClient
 }
 
 // RegisterModules 注册模块，详情见Module
 func (a *App) RegisterModules(modules ...Module) {
-	for _, module := range modules {
-		module.Init(a)
-	}
-	a.modules = append(a.modules, modules...)
-}
-
-// Provide 提供资源，和Take配套使用
-func (a *App) Provide(id string, obj interface{}) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.resource[id] = obj
-}
-
-// Take 从AppContext中获取资源，即通过Provide提供的资源
-func (a *App) Take(id string) interface{} {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.resource[id]
-}
-
-// RegisterShutdown 注册停止服务前调用的方法
-// 当服务停止时，会先停止HTTP服务、定时任务、事件系统，当这3者停止后，
-// 调用通过ReigsterShutdown注册的方法
-func (a *App) RegisterShutdown(hook OnShutdown) {
-	a.shutdownHooks = append(a.shutdownHooks, hook)
+	a.ac.registerModules(modules...)
 }
 
 // Start 启动服务，并返回停止服务的方法
 // 内部会根据配置启动HTTP服务、定时任务服务
 func (a *App) Start() func() {
-	a.c.Start()
-	go func() {
-		if err := a.e.Start(a.config.APIAddr); err != nil && err != http.ErrServerClosed {
-			a.Logf("[ERROR] Echo Start Failed: %s", err.Error())
-			panic(err.Error())
-		}
-	}()
-
-	return func() {
-		var wg sync.WaitGroup
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			cCtx := a.c.Stop()
-			<-cCtx.Done()
-			a.Logf("[INFO] Cron Stopped")
-		}()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := a.e.Shutdown(ctx); err != nil {
-				a.Logf("[ERROR] Echo Shutdown Failed: %s", err.Error())
-			}
-			a.Logf("[INFO] Echo Stopped")
-		}()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			a.pubsub.Close()
-			a.Logf("[INFO] PubSub Stopped")
-		}()
-
-		wg.Wait()
-		for _, hook := range a.shutdownHooks {
-			func() {
-				defer func() {
-					if err := recover(); err != nil {
-						a.Logf("Shutdown Hook Triggered Error: %#v", err)
-					}
-				}()
-				hook()
-			}()
-		}
-		a.Logf("[INFO] Stopped")
-	}
+	return a.ac.start()
 }
 
 func (a *App) Logf(format string, args ...interface{}) {
 	a.logger.Output(3, fmt.Sprintf(format, args...))
 }
 
+func (a *App) Context() Context {
+	return a.ac
+}
+
+func (a *App) Migrate(migrators ...Migrator) {
+	a.ac.migrate(migrators...)
+}
+
 // Provide 和AppContext.Provide拥有相同的功能，即注册资源到AppContext中
 // 该方法返回Module，因此可以做为创建模块的快捷方式
 // 比如这样使用: app.RegisterModules(quick.Provide("id-res1", obj))
 func Provide(id string, obj interface{}) Module {
-	return ModuleFunc(func(ac AppContext) {
+	return ModuleFunc(func(ac Context) {
 		ac.Provide(id, obj)
 	})
 }

@@ -21,7 +21,7 @@ type Session struct {
 	Remember bool
 }
 
-func AdminModule(ac quick.AppContext) {
+func AdminModule(ac quick.Context) {
 	adminService := NewService(ac.GetDB())
 	ac.Provide("adminService", adminService)
 

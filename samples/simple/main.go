@@ -13,7 +13,7 @@ import (
 func main() {
 	app := quick.New(quick.Config{})
 	app.RegisterModules(
-		quick.ModuleFunc(func(ac quick.AppContext) {
+		quick.ModuleFunc(func(ac quick.Context) {
 			timer := time.NewTicker(time.Second)
 			count := 0
 			go func() {

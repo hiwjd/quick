@@ -10,9 +10,12 @@ import (
 )
 
 func main() {
-	app := quick.New(quick.Config{})
+	app := quick.New(quick.Config{
+		MysqlDSN: "root:@/quick?charset=utf8&parseTime=True&loc=Local",
+	})
+	app.Migrate(admin.Migrate)
 	app.RegisterModules(
-		quick.Provide("adminSessionStorage", session.NewRedisStorage("", app.GetRedis())),
+		quick.Provide("adminSessionStorage", session.NewRedisStorage("", app.Context().GetRedis())),
 		quick.ModuleFunc(admin.AdminModule),
 	)
 	close := app.Start()
