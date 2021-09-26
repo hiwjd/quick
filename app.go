@@ -110,7 +110,7 @@ func (a *App) Start() func() {
 }
 
 func (a *App) Logf(format string, args ...interface{}) {
-	a.logger.Output(3, fmt.Sprintf(format, args...))
+	a.logger.Output(2, fmt.Sprintf(format, args...))
 }
 
 func (a *App) Context() Context {
@@ -121,7 +121,7 @@ func (a *App) Migrate(migrators ...Migrator) {
 	a.ac.migrate(migrators...)
 }
 
-// Provide 和AppContext.Provide拥有相同的功能，即注册资源到AppContext中
+// Provide 和Context.Provide拥有相同的功能，即注册资源到Context中
 // 该方法返回Module，因此可以做为创建模块的快捷方式
 // 比如这样使用: app.RegisterModules(quick.Provide("id-res1", obj))
 func Provide(id string, obj interface{}) Module {

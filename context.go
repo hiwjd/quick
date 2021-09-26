@@ -53,6 +53,7 @@ type (
 )
 
 type quickContext struct {
+	muModule      sync.Mutex
 	mu            sync.RWMutex
 	config        Config
 	logger        *log.Logger
@@ -144,13 +145,13 @@ func (a *quickContext) RegisterShutdown(hook OnShutdown) {
 }
 
 func (a *quickContext) Logf(format string, args ...interface{}) {
-	a.logger.Output(3, fmt.Sprintf(format, args...))
+	a.logger.Output(2, fmt.Sprintf(format, args...))
 }
 
 // registerModules 注册模块，详情见Module
 func (a *quickContext) registerModules(modules ...Module) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+	a.muModule.Lock()
+	defer a.muModule.Unlock()
 	for _, module := range modules {
 		module.Init(a)
 	}
